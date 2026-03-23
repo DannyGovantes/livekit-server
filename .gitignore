@@ -6,7 +6,6 @@ dist/
 
 # Environment variables
 .env
-.env.local
 
 # IDE
 .vscode/
@@ -19,6 +18,3 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-
-# GCP
-.gcloudignore
