@@ -95,7 +95,7 @@ export const generateToken: HttpFunction = async (req, res) => {
     if (!isAdmin) {
       const wsUrl = process.env.LIVEKIT_WS_URL;
       if (wsUrl) {
-        const longUrl = `https://meet.livekit.io/?liveKitUrl=${wsUrl}&token=${token}`;
+        const longUrl = `https://meet.livekit.io/custom?liveKitUrl=${wsUrl}&token=${token}`;
         const shortUrlRes = await fetch(
           `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
         );
