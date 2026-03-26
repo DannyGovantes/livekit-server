@@ -74,12 +74,34 @@ export const generateToken: HttpFunction = async (req, res) => {
     // Generate token
     const token = await createToken(roomName, participantName, options);
 
-    res.json({
+    // Build response
+    const response: {
+      token: string;
+      roomName: string;
+      participantName: string;
+      expiresIn: number;
+      shortUrl?: string;
+    } = {
       token,
       roomName,
       participantName,
       expiresIn: options.ttl || 6 * 60 * 60,
-    });
+    };
+
+    // Generate short URL for non-admin users
+    if (!isAdmin) {
+      const wsUrl = process.env.LIVEKIT_WS_URL;
+      if (wsUrl) {
+        const longUrl = `https://meet.livekit.io/?liveKitUrl=${wsUrl}&token=${token}`;
+        const shortUrlRes = await fetch(
+          `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+        );
+        const data = (await shortUrlRes.json()) as { shorturl: string };
+        response.shortUrl = data.shorturl;
+      }
+    }
+
+    res.json(response);
   } catch (error) {
     console.error("Error generating token:", error);
     res.status(500).json({
