@@ -1,8 +1,16 @@
-import { HttpFunction } from "@google-cloud/functions-framework";
+import cors from "@fastify/cors";
+import dotenv from "dotenv";
+import Fastify from "fastify";
 import {
   generateToken as createToken,
   TokenOptions,
 } from "./services/tokenService";
+
+dotenv.config();
+
+const server = Fastify({ logger: true });
+
+server.register(cors, { origin: true });
 
 interface TokenRequest {
   roomName: string;
@@ -14,32 +22,32 @@ interface TokenRequest {
   metadata?: string;
 }
 
-/**
- * HTTP Cloud Function to generate LiveKit access tokens
- */
-export const generateToken: HttpFunction = async (req, res) => {
-  const origin = req.headers.origin;
+// Health check
+server.get("/health", async () => {
+  return { status: "ok", timestamp: new Date().toISOString() };
+});
 
-  res.set("Access-Control-Allow-Origin", origin);
-  // CORS headers - adjust origin for production
-  res.set("Access-Control-Allow-Credentials", "true");
-  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type");
-
-  // Handle preflight requests
-  if (req.method === "OPTIONS") {
-    res.status(204).send("");
-    return;
-  }
-
-  // Only allow POST
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed. Use POST." });
-    return;
-  }
-
-  try {
-    const body: TokenRequest = req.body;
+// Token generation endpoint
+server.post<{ Body: TokenRequest }>(
+  "/api/token",
+  {
+    schema: {
+      body: {
+        type: "object",
+        required: ["roomName", "participantName"],
+        properties: {
+          roomName: { type: "string", minLength: 1 },
+          participantName: { type: "string", minLength: 1 },
+          isAdmin: { type: "boolean" },
+          canPublish: { type: "boolean" },
+          canSubscribe: { type: "boolean" },
+          ttl: { type: "number" },
+          metadata: { type: "string" },
+        },
+      },
+    },
+  },
+  async (request, reply) => {
     const {
       roomName,
       participantName,
@@ -48,24 +56,8 @@ export const generateToken: HttpFunction = async (req, res) => {
       canSubscribe,
       ttl,
       metadata,
-    } = body;
+    } = request.body;
 
-    // Validate required fields
-    if (!roomName || typeof roomName !== "string") {
-      res
-        .status(400)
-        .json({ error: "roomName is required and must be a string" });
-      return;
-    }
-
-    if (!participantName || typeof participantName !== "string") {
-      res
-        .status(400)
-        .json({ error: "participantName is required and must be a string" });
-      return;
-    }
-
-    // Build token options
     const options: TokenOptions = {
       isAdmin,
       canPublish,
@@ -74,10 +66,17 @@ export const generateToken: HttpFunction = async (req, res) => {
       metadata,
     };
 
-    // Generate token
-    const token = await createToken(roomName, participantName, options);
+    let token: string;
+    try {
+      token = await createToken(roomName, participantName, options);
+    } catch (err) {
+      request.log.error(err, "Failed to generate LiveKit token");
+      return reply.status(500).send({
+        error: "Token generation failed",
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
 
-    // Build response
     const response: {
       token: string;
       roomName: string;
@@ -95,20 +94,34 @@ export const generateToken: HttpFunction = async (req, res) => {
     if (!isAdmin) {
       const wsUrl = process.env.LIVEKIT_WS_URL;
       if (wsUrl) {
-        const longUrl = `https://meet.livekit.io/custom?liveKitUrl=${wsUrl}&token=${token}`;
-        const shortUrlRes = await fetch(
-          `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
-        );
-        const data = (await shortUrlRes.json()) as { shorturl: string };
-        response.shortUrl = data.shorturl;
+        try {
+          const longUrl = `https://meet.livekit.io/custom?liveKitUrl=${wsUrl}&token=${token}`;
+          const shortUrlRes = await fetch(
+            `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`,
+          );
+          const data = (await shortUrlRes.json()) as { shorturl: string };
+          response.shortUrl = data.shorturl;
+        } catch {
+          // Short URL generation is optional
+        }
       }
     }
 
-    res.json(response);
-  } catch (error) {
-    console.error("Error generating token:", error);
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Internal server error",
-    });
+    return response;
+  },
+);
+
+// Start server
+const start = async () => {
+  const port = Number(process.env.PORT) || 3000;
+  const host = process.env.HOST || "0.0.0.0";
+
+  try {
+    await server.listen({ port, host });
+  } catch (err) {
+    server.log.error(err);
+    process.exit(1);
   }
 };
+
+start();

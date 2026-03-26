@@ -1,28 +1,29 @@
 {
   "name": "livekit-token-generator",
   "version": "1.0.0",
-  "description": "LiveKit token generator - Serverless Cloud Function",
+  "description": "LiveKit token generator - Fastify server",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "npm run build && npx @google-cloud/functions-framework --target=generateToken --source=dist",
+    "dev": "ts-node src/index.ts",
     "build": "tsc",
-    "predeploy": "npm run build",
-    "deploy:gcp": "gcloud functions deploy generateToken --gen2 --runtime nodejs20 --trigger-http --allow-unauthenticated --entry-point generateToken --source ."
+    "start": "node dist/index.js"
   },
   "keywords": [
     "livekit",
     "token",
-    "serverless",
-    "cloud-functions"
+    "fastify"
   ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google-cloud/functions-framework": "^3.4.0",
+    "@fastify/cors": "^10.0.0",
+    "dotenv": "^17.3.1",
+    "fastify": "^5.2.0",
     "livekit-server-sdk": "^2.15.0"
   },
   "devDependencies": {
     "@types/node": "^25.4.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
 }
